@@ -1,1 +1,1 @@
-# CS_503043-Introduction-To-Artificial-Intelligence
+# CS_503043-Introduction-to-Artificial-Intelligence
