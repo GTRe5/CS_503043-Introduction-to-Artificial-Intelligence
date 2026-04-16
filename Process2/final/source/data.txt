@@ -1,0 +1,21 @@
+a -b -c
+b -d
+c -e -f
+d -g -h
+e -a
+f -b -d -h
+g -c -e
+h -f
+a -g -h
+b -a -e -f
+c -d
+d -b -g
+e -h
+f -a -c
+g -b -h
+h -d -e -f
+a -c
+b -f -g -h
+c -a -d
+d -e -g
+d
