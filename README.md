@@ -24,7 +24,7 @@ Welcome to **CS_503043 – Introduction to Artificial Intelligence**. This repos
  ┣ 📂 Week01-08        # Homework and tasks
  ┣ 📂 Process2         # Process 2 project
  ┣ 📂 Midterm          # Midterm project
- ┣ 📂 Endterm          # Endterm project
+ ┣ 📂 Finalterm        # Finalterm project
  ┗ 📄 README.md
 ```
 
