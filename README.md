@@ -1,7 +1,5 @@
 # CS_503043 – Introduction to Artificial Intelligence
 
-![AI Banner](https://wallpaperaccess.com/full/360307.jpg)
-
 ## 📌 Overview
 
 Welcome to **CS_503043 – Introduction to Artificial Intelligence**. This repository contains materials, assignments, and projects covering fundamental concepts of AI, from basic search algorithms to modern machine learning techniques.
