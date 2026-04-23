@@ -3,7 +3,7 @@ import copy
 
 class State:
     """
-    One snapshot of the 9×9 Tic-Tac-Toe board.
+    One snapshot of the 9x9 Tic-Tac-Toe board.
 
     Attributes
     ----------
@@ -38,7 +38,7 @@ class State:
         """
         Return valid (row, col) moves.
         Restricts candidates to cells within radius 1 of existing pieces
-        to keep the search tree manageable on a 9×9 board.
+        to keep the search tree manageable on a 9x9 board.
         Falls back to a wider radius-2 scan when radius-1 yields nothing.
         """
         for radius in (1, 2):

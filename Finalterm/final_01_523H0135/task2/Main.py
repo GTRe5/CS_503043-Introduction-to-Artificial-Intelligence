@@ -1,5 +1,5 @@
 """
-Main.py - Pygame UI for 9×9 Tic-Tac-Toe.
+Main.py - Pygame UI for 9x9 Tic-Tac-Toe.
 
 The UI layer only communicates with Solution.  No game logic lives here.
 """
@@ -261,9 +261,9 @@ def screen_tutorial():
     back_r = pygame.Rect(card.left   +      16, card.bottom - BH - 14, BW, BH)
     got_r  = pygame.Rect(CX - BW // 2,          card.bottom - BH - 14, BW, BH)
 
-    # ── mini demo board (5×5) ─────────────────────────────────────────────────
+    # ── mini demo board (5x5) ─────────────────────────────────────────────────
     MS  = 36      # cell size
-    MN  = 5       # 5×5
+    MN  = 5       # 5x5
     MP  = 4       # padding between cells
     MBOARD = [
         [".", ".", ".", ".", "."],
@@ -392,7 +392,7 @@ def screen_tutorial():
         ry += 6
         badge(lx, ry, "BOARD", SEC_CLR);  ry += 30
         for line in [
-            "9 × 9 grid  -  81 cells total",
+            "9 x 9 grid  -  81 cells total",
             "Candidates are cells near existing pieces",
         ]:
             bt = body_f.render("•  " + line, True, TXT_MID)
@@ -498,7 +498,7 @@ def screen_intro(can_continue: bool) -> tuple:
     while True:
         screen.blit(bg, (0, 0))
         mouse = pygame.mouse.get_pos()
-        title = font.render("Tic Tac Toe 9×9", True, TEXT_COLOR)
+        title = font.render("Tic Tac Toe 9x9", True, TEXT_COLOR)
         screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//3))
         draw_btn(INTRO_NEW_RECT,  "New Game", mouse, BLUE,   BLUE_H)
         draw_btn(INTRO_CONT_RECT, "Continue", mouse, AMBER,  AMBER_H,  enabled=can_continue)

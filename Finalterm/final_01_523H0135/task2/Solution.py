@@ -11,7 +11,8 @@ Public API
   sol.human_move(r, c)     - apply the human's move; returns new State or None
   sol.request_ai_move()    - launch AI search in background thread
   sol.apply_ai_move()      - apply the pending AI move; returns new State or None
-  sol.undo()               - revert the last two half-moves (human + AI)
+  sol.undo()               - revert the last half-move (one ply at a time)
+  sol.redo()               - reapply the last undone pair of half-moves (human + AI)
   sol.save(path)           - pickle current history
   sol.load(path)           - restore history from pickle
 
@@ -186,6 +187,20 @@ class Solution:
     
     # ── redo ──────────────────────────────────────────────────────────────────
     def redo(self) -> bool:
+        """
+        Reapply the last two undone half-moves (human move + AI reply).
+
+        Redo is only possible when:
+          • the AI is not currently thinking, and
+          • there are at least two states on the redo stack
+            (one human ply + one AI ply that were previously undone).
+
+        The redo stack is cleared automatically whenever a new human or AI
+        move is applied, so redo is unavailable once the player makes a
+        fresh move after undoing.
+
+        Returns True if redo was applied, False otherwise.
+        """
         if self._ai_thinking or not self._redo_stack:
             return False
 
