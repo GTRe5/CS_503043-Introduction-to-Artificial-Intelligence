@@ -40,7 +40,7 @@ LINE_W         = 3
 RADIUS         = SQ // 3
 SPACE          = SQ // 4
 
-SAVE_FILE      = "Storage/saved_game.pkl"
+SAVE_DIR       = "Storage"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PYGAME INIT
@@ -492,8 +492,175 @@ def screen_tutorial():
                     elif got_r.collidepoint(ev.pos):
                         return
 
+def screen_slot_picker() -> str | None:
+    """
+    Display all saved game slots and let the player choose one to load.
+
+    Returns the chosen save file path, or None if the player pressed Back.
+
+    Layout
+    ──────
+    • Up to MAX_VISIBLE slots shown at once; mouse-wheel / arrow keys scroll.
+    • Each row shows: slot number, datetime saved, difficulty, move count,
+      a coloured Load button, and a red Delete button.
+    • A confirmation pop-up appears before deleting.
+    """
+
+    DIFF_NAMES  = {2: "Easy", 3: "Medium", 5: "Hard"}
+    DIFF_COLORS = {2: (80, 175, 80), 3: (190, 150, 50), 5: (190, 65, 65)}
+
+    MAX_VISIBLE = 5
+    ROW_H       = 68
+    CW, CH      = 560, MAX_VISIBLE * ROW_H + 120
+    CX, CY      = WIDTH // 2, HEIGHT // 2
+    card        = pygame.Rect(CX - CW // 2, CY - CH // 2, CW, CH)
+
+    lbl_f  = pygame.font.SysFont(None, 22)
+    body_f = pygame.font.SysFont(None, 26)
+    hdr_f  = pygame.font.SysFont(None, 38)
+    btn_f  = pygame.font.SysFont(None, 24)
+
+    BACK_RECT = pygame.Rect(card.x + 16, card.bottom - 50, 100, 36)
+
+    def reload():
+        return Solution.list_saves(SAVE_DIR)
+
+    def pill(rect, text, clr, hov, mouse, enabled=True):
+        c = GRAY if not enabled else (hov if rect.collidepoint(mouse) else clr)
+        pygame.draw.rect(screen, c, rect, border_radius=6)
+        s = btn_f.render(text, True, (255, 255, 255))
+        screen.blit(s, s.get_rect(center=rect.center))
+
+    def confirm_delete(save_info: dict) -> bool:
+        """Tiny yes/no overlay. Returns True if user confirms."""
+        box   = pygame.Rect(CX - 190, CY - 65, 380, 130)
+        yes_r = pygame.Rect(CX - 100, CY + 10, 85, 34)
+        no_r  = pygame.Rect(CX + 20,  CY + 10, 85, 34)
+        msg   = f"Delete save from {save_info['saved_at']}?"
+        while True:
+            mouse = pygame.mouse.get_pos()
+            pygame.draw.rect(screen, (245, 245, 240), box, border_radius=12)
+            pygame.draw.rect(screen, (160, 160, 160), box, 2, border_radius=12)
+            ms = lbl_f.render(msg, True, (40, 40, 40))
+            screen.blit(ms, ms.get_rect(center=(CX, CY - 25)))
+            pill(yes_r, "Delete", (190, 65, 65), (220, 95, 95), mouse)
+            pill(no_r,  "Cancel", BLUE,           BLUE_H,        mouse)
+            pygame.display.update()
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                if ev.type == pygame.MOUSEBUTTONDOWN:
+                    if yes_r.collidepoint(ev.pos): return True
+                    if no_r.collidepoint(ev.pos):  return False
+
+    saves  = reload()
+    scroll = 0          # index of first visible row
+    bg     = load_bg()
+
+    while True:
+        mouse  = pygame.mouse.get_pos()
+        saves  = reload()                           # refresh after deletes
+        n      = len(saves)
+        scroll = max(0, min(scroll, max(0, n - MAX_VISIBLE)))
+
+        # ── background + card ────────────────────────────────────────────────
+        screen.blit(bg, (0, 0))
+        dim = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        dim.fill((20, 28, 48, 170))
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, (95, 95, 95), (card.x+4, card.y+4, CW, CH), border_radius=16)
+        pygame.draw.rect(screen, (245, 245, 240), card, border_radius=16)
+        pygame.draw.rect(screen, (180, 180, 170), card, 2, border_radius=16)
+
+        # ── title ────────────────────────────────────────────────────────────
+        ht = hdr_f.render("Continue a Game", True, BLUE)
+        screen.blit(ht, (card.x + 20, card.y + 16))
+        pygame.draw.line(screen, BLUE,
+                         (card.x+20, card.y+50), (card.x+CW-20, card.y+50), 2)
+
+        # ── slot rows ────────────────────────────────────────────────────────
+        visible = saves[scroll: scroll + MAX_VISIBLE]
+        if not visible:
+            ns = body_f.render("No saved games found.", True, (120, 120, 120))
+            screen.blit(ns, ns.get_rect(center=(CX, CY - 10)))
+        else:
+            for i, sv in enumerate(visible):
+                ry     = card.y + 60 + i * ROW_H
+                row_bg = (235, 240, 250) if i % 2 == 0 else (245, 245, 240)
+                pygame.draw.rect(screen, row_bg,
+                                 (card.x+10, ry+4, CW-20, ROW_H-6), border_radius=8)
+
+                # slot number badge
+                slot_n = scroll + i + 1
+                pygame.draw.rect(screen, BLUE,
+                                 (card.x+18, ry+14, 28, 28), border_radius=6)
+                ns = lbl_f.render(str(slot_n), True, (255,255,255))
+                screen.blit(ns, ns.get_rect(center=(card.x+32, ry+28)))
+
+                # datetime + move count
+                dt_s = body_f.render(sv["saved_at"], True, (30,30,30))
+                mv_s = lbl_f.render(f"{sv['move_count']} moves", True, (100,100,100))
+                screen.blit(dt_s, (card.x+58, ry+10))
+                screen.blit(mv_s, (card.x+58, ry+34))
+
+                # difficulty badge
+                dl   = sv["depth_limit"]
+                dc   = DIFF_COLORS.get(dl, GRAY)
+                dn   = DIFF_NAMES.get(dl, str(dl))
+                pygame.draw.rect(screen, dc, (card.x+240, ry+16, 58, 22), border_radius=5)
+                ds   = lbl_f.render(dn, True, (255,255,255))
+                screen.blit(ds, ds.get_rect(center=(card.x+269, ry+27)))
+
+                # Load / Delete buttons
+                load_r = pygame.Rect(card.x + 318, ry+14, 78, 30)
+                del_r  = pygame.Rect(card.x + 406, ry+14, 78, 30)
+                pill(load_r, "Load",   BLUE,           BLUE_H,           mouse)
+                pill(del_r,  "Delete", (180, 70,  70), (210, 100, 100),  mouse)
+
+                # store rects for hit-testing
+                saves[scroll + i]["_load_r"] = load_r
+                saves[scroll + i]["_del_r"]  = del_r
+
+        # ── scroll indicators ────────────────────────────────────────────────
+        if scroll > 0:
+            su = lbl_f.render("^ scroll up", True, (120,120,120))
+            screen.blit(su, su.get_rect(center=(CX, card.y + 56)))
+        if scroll + MAX_VISIBLE < n:
+            sd = lbl_f.render("v scroll down", True, (120,120,120))
+            screen.blit(sd, sd.get_rect(center=(CX, card.bottom - 58)))
+
+        # ── back button ──────────────────────────────────────────────────────
+        pill(BACK_RECT, "<- Back", AMBER, AMBER_H, mouse)
+        pygame.display.update()
+        clock.tick(60)
+
+        # ── events ───────────────────────────────────────────────────────────
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_ESCAPE:
+                    return None
+                if ev.key in (pygame.K_DOWN, pygame.K_s):
+                    scroll = min(scroll + 1, max(0, n - MAX_VISIBLE))
+                if ev.key in (pygame.K_UP, pygame.K_w):
+                    scroll = max(0, scroll - 1)
+            if ev.type == pygame.MOUSEWHEEL:
+                scroll = max(0, min(scroll - ev.y, max(0, n - MAX_VISIBLE)))
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                if BACK_RECT.collidepoint(ev.pos):
+                    return None
+                for sv in saves:
+                    if sv.get("_load_r") and sv["_load_r"].collidepoint(ev.pos):
+                        return sv["path"]
+                    if sv.get("_del_r")  and sv["_del_r"].collidepoint(ev.pos):
+                        if confirm_delete(sv):
+                            Solution.delete_save(sv["path"])
+                        break   # redraw after delete
+
+
 def screen_intro(can_continue: bool) -> tuple:
-    """Return ('new', depth) | ('continue', None)."""
+    """Return ('new', depth) | ('continue', path)."""
     bg = load_bg()
     while True:
         screen.blit(bg, (0, 0))
@@ -514,7 +681,10 @@ def screen_intro(can_continue: bool) -> tuple:
                     depth = screen_difficulty()
                     return "new", depth
                 if INTRO_CONT_RECT.collidepoint(ev.pos) and can_continue:
-                    return "continue", None
+                    chosen = screen_slot_picker()
+                    if chosen:                          # player picked a slot
+                        return "continue", chosen
+                    # else: player pressed Back → stay on intro
                 if INTRO_TUT_RECT.collidepoint(ev.pos):
                     screen_tutorial()
                 if INTRO_EXIT_RECT.collidepoint(ev.pos):
@@ -560,17 +730,17 @@ def main():
     show_end     = False
     again_rect   = home_rect = None
 
-    # ── try to detect a saved game ────────────────────────────────────────────
+    # ── detect existing saves ─────────────────────────────────────────────────
     import os
-    os.makedirs("Storage", exist_ok=True)
-    can_continue = os.path.exists(SAVE_FILE)
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    can_continue = bool(Solution.list_saves(SAVE_DIR))
 
-    choice, depth = screen_intro(can_continue)
+    choice, payload = screen_intro(can_continue)
     if choice == "new":
-        sol.set_difficulty(depth)
+        sol.set_difficulty(payload)      # payload = depth
         sol.reset()
     else:
-        if not sol.load(SAVE_FILE):
+        if not sol.load(payload):        # payload = chosen save path
             sol.reset()
 
     redraw(sol, "Your turn (X)")
@@ -608,13 +778,13 @@ def main():
         # ── events ───────────────────────────────────────────────────────────
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                sol.save(SAVE_FILE)
+                sol.save_slot(SAVE_DIR)
                 sol.shutdown()
                 pygame.quit(); sys.exit()
 
             if ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:
-                    sol.save(SAVE_FILE)
+                    sol.save_slot(SAVE_DIR)
                     pygame.quit()
                     sys.exit()
 
@@ -628,26 +798,28 @@ def main():
                         show_end = False
                         redraw(sol, "Your turn (X)")
                     elif home_rect and home_rect.collidepoint(pos):
-                        sol.save(SAVE_FILE)
-                        choice, depth = screen_intro(True)
+                        sol.save_slot(SAVE_DIR)
+                        can_continue = bool(Solution.list_saves(SAVE_DIR))
+                        choice, payload = screen_intro(can_continue)
                         if choice == "new":
-                            sol.set_difficulty(depth)
+                            sol.set_difficulty(payload)
                             sol.reset()
                         else:
-                            sol.load(SAVE_FILE)
+                            sol.load(payload)
                         show_end = False
                         redraw(sol, "Your turn (X)")
                     continue
 
                 # ── toolbar buttons ───────────────────────────────────────────
                 if HOME_RECT.collidepoint(pos):
-                    sol.save(SAVE_FILE)
-                    choice, depth = screen_intro(True)
+                    sol.save_slot(SAVE_DIR)
+                    can_continue = bool(Solution.list_saves(SAVE_DIR))
+                    choice, payload = screen_intro(can_continue)
                     if choice == "new":
-                        sol.set_difficulty(depth)
+                        sol.set_difficulty(payload)
                         sol.reset()
                     else:
-                        sol.load(SAVE_FILE)
+                        sol.load(payload)
                     show_end = False
                     redraw(sol, "Your turn (X)")
                     continue
@@ -662,7 +834,7 @@ def main():
                     if sol.undo():
                         redraw(sol, "Your turn (X)")
                     continue
-                
+
                 if REDO_RECT.collidepoint(pos):
                     if sol.redo():
                         redraw(sol, "Redo move")

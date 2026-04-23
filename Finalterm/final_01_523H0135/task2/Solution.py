@@ -11,8 +11,7 @@ Public API
   sol.human_move(r, c)     - apply the human's move; returns new State or None
   sol.request_ai_move()    - launch AI search in background thread
   sol.apply_ai_move()      - apply the pending AI move; returns new State or None
-  sol.undo()               - revert the last half-move (one ply at a time)
-  sol.redo()               - reapply the last undone pair of half-moves (human + AI)
+  sol.undo()               - revert the last two half-moves (human + AI)
   sol.save(path)           - pickle current history
   sol.load(path)           - restore history from pickle
 
@@ -26,6 +25,9 @@ Read-only properties
   sol.difficulty_name      - 'Easy' / 'Medium' / 'Hard'
 """
 
+import datetime
+import glob
+import os
 import pickle
 import threading
 
@@ -60,6 +62,7 @@ class Solution:
         self._ai_thread:  threading.Thread = None
 
         self._redo_stack = []
+        self._current_save_path: str | None = None  # track which file was loaded
 
         self.reset()
 
@@ -74,6 +77,7 @@ class Solution:
         self._ai_result  = None
         self._stop_event = threading.Event()
         self._redo_stack = []
+        self._current_save_path = None   # new game → no existing slot to overwrite
 
     def set_difficulty(self, depth_limit: int) -> None:
         self.depth_limit = depth_limit
@@ -187,20 +191,6 @@ class Solution:
     
     # ── redo ──────────────────────────────────────────────────────────────────
     def redo(self) -> bool:
-        """
-        Reapply the last two undone half-moves (human move + AI reply).
-
-        Redo is only possible when:
-          • the AI is not currently thinking, and
-          • there are at least two states on the redo stack
-            (one human ply + one AI ply that were previously undone).
-
-        The redo stack is cleared automatically whenever a new human or AI
-        move is applied, so redo is unavailable once the player makes a
-        fresh move after undoing.
-
-        Returns True if redo was applied, False otherwise.
-        """
         if self._ai_thinking or not self._redo_stack:
             return False
 
@@ -214,12 +204,85 @@ class Solution:
 
     # ── persistence ───────────────────────────────────────────────────────────
     def save(self, path: str) -> None:
-        data = {"history": self._history, "depth_limit": self.depth_limit}
+        """Write game state to an explicit path."""
+        data = {
+            "history":     self._history,
+            "depth_limit": self.depth_limit,
+            "saved_at":    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "move_count":  len(self._history) - 1,
+        }
         with open(path, "wb") as f:
             pickle.dump(data, f)
 
+    def save_slot(self, folder: str) -> str:
+        """
+        Save the current game, reusing the same file if this session was
+        loaded from an existing slot.
+
+        Behaviour
+        ---------
+        • New game (never saved before) → creates  save_YYYYMMDD_HHMMSS.pkl
+          and remembers the path for all future saves in this session.
+        • Resumed game (loaded from a slot) → overwrites that same file so
+          no duplicate clone is produced regardless of how many times the
+          player pauses and resumes.
+
+        Returns the full path of the save file written.
+        """
+        os.makedirs(folder, exist_ok=True)
+        if self._current_save_path is None:
+            # First save for this session – mint a new timestamped slot.
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            self._current_save_path = os.path.join(folder, f"save_{ts}.pkl")
+        self.save(self._current_save_path)
+        return self._current_save_path
+
+    @staticmethod
+    def list_saves(folder: str) -> list:
+        """
+        Scan *folder* for save_*.pkl files and return a list of metadata
+        dicts sorted newest-first.
+
+        Each dict contains:
+          path        – full file path
+          saved_at    – human-readable datetime string
+          depth_limit – difficulty level stored in the file
+          move_count  – number of plies played at save time
+        """
+        saves = []
+        pattern = os.path.join(folder, "save_*.pkl")
+        for path in sorted(glob.glob(pattern), reverse=True):
+            try:
+                with open(path, "rb") as f:
+                    data = pickle.load(f)
+                saves.append({
+                    "path":        path,
+                    "saved_at":    data.get("saved_at",    "Unknown date"),
+                    "depth_limit": data.get("depth_limit", 3),
+                    "move_count":  data.get("move_count",  0),
+                })
+            except Exception:
+                pass
+        return saves
+
+    @staticmethod
+    def delete_save(path: str) -> None:
+        """Delete a save file from disk. Silently ignores missing files."""
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+
     def load(self, path: str) -> bool:
-        """Load a saved game. Returns True on success."""
+        """
+        Load a saved game from *path*.
+
+        On success, remembers *path* as the current save slot so that
+        subsequent save_slot() calls overwrite this file instead of
+        creating a new clone.
+
+        Returns True on success, False on failure.
+        """
         try:
             with open(path, "rb") as f:
                 data = pickle.load(f)
@@ -229,6 +292,7 @@ class Solution:
             self.depth_limit = data.get("depth_limit", self.depth_limit)
             self._problem    = Problem(self._history[0], ai_symbol=self.ai_symbol)
             self._strategy   = AlphaBetaSearch(self._problem, self.depth_limit)
+            self._current_save_path = path   # ← remember slot; no clone on next save
             return True
         except Exception:
             return False
