@@ -1,124 +1,178 @@
-import math
+"""
+AI.py - Search strategy for the Tic-Tac-Toe AI.
 
-class AIPlayer:
-    def __init__(self, problem, depth_limit=2):
-        self.problem = problem
+Architecture
+────────────
+  SearchStrategy (ABC)       - any AI algorithm must implement get_move().
+  AlphaBetaSearch(Strategy)  - heuristic alpha-beta with:
+                                 • transposition table (avoid re-evaluating states)
+                                 • move ordering (win-first, block-second, then scored)
+                                 • configurable depth limit L
+"""
+
+import math
+from abc import ABC, abstractmethod
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ABSTRACT BASE
+# ─────────────────────────────────────────────────────────────────────────────
+class SearchStrategy(ABC):
+    """Abstract AI strategy. Subclasses implement get_move()."""
+
+    @abstractmethod
+    def get_move(self, state, stop_event) -> tuple | None:
+        """
+        Return the best (row, col) action for the current state.
+        stop_event : threading.Event - set externally to cancel search early.
+        Returns None if cancelled.
+        """
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONCRETE: HEURISTIC ALPHA-BETA SEARCH
+# ─────────────────────────────────────────────────────────────────────────────
+class AlphaBetaSearch(SearchStrategy):
+    """
+    Heuristic Alpha-Beta Search (h-minimax).
+
+    Combines standard alpha-beta pruning with a depth limit L and a
+    heuristic evaluation function at non-terminal leaf nodes.
+
+    Depth limit rationale
+    ---------------------
+    Depth 2 (Easy) - looks 2 plies ahead; fast, moderate play.
+    Depth 3 (Medium) - looks 3 plies; noticeably stronger.
+    Depth 5 (Hard) - looks 5 plies; very strong but still responsive
+                     thanks to move ordering and alpha-beta pruning.
+
+    Move ordering rationale
+    -----------------------
+    Searching winning moves first and blocking moves second causes
+    alpha-beta to prune far more branches, effectively doubling the
+    useful search depth for the same budget.
+
+    Transposition table
+    -------------------
+    Maps (board_hash, depth) → evaluated score to avoid re-computing
+    identical positions reached via different move sequences.
+    """
+
+    def __init__(self, problem, depth_limit: int = 3):
+        self.problem     = problem
         self.depth_limit = depth_limit
 
-    def get_move(self, state, stop_event):
+    # ── public interface ──────────────────────────────────────────────────────
+    def get_move(self, state, stop_event) -> tuple | None:
         if stop_event.is_set():
             return None
 
-        def alpha_beta(state, depth_limit, ai_symbol, human_symbol):
-            transposition_table = {}
+        ai_sym    = self.problem.ai_symbol
+        hu_sym    = self.problem.human_symbol
+        tt        = {}                          # transposition table
 
-            def order_actions(actions, state, maximizing, ai_symbol, human_symbol):
-                winning_actions = []
-                blocking_actions = []
+        # ── helpers ──────────────────────────────────────────────────────────
+        def state_key(s, depth):
+            return (tuple(tuple(r) for r in s.grid), s.current_player, depth)
 
-                for action in actions:
-                    new_state = state.result(action)
-                    if new_state.check_win(ai_symbol):
-                        return [action]
-                    if new_state.check_win(human_symbol):
-                        blocking_actions.append(action)
+        MAX_CANDIDATES = 12   # cap branching factor for speed
 
-                if blocking_actions:
-                    return blocking_actions
+        def order_actions(actions, s, maximizing):
+            """Win immediately > block opponent win > heuristic score.
 
-                def action_score(action):
-                    new_state = state.result(action)
-                    return new_state.evaluate(ai_symbol, human_symbol)
+            result() is computed ONCE per action and cached to avoid
+            redundant deep-copies of the 9×9 grid.
+            """
+            cache = {a: s.result(a) for a in actions}
 
-                return sorted(actions, key=action_score, reverse=maximizing)
+            for a in actions:
+                if cache[a].check_win(ai_sym):
+                    return [a]              # instant win - no need to look further
 
-            def hash_state(state):
-                return str(state.grid), state.current_player
+            blocking = [a for a in actions if cache[a].check_win(hu_sym)]
+            if blocking:
+                return blocking[:MAX_CANDIDATES]
 
-            def max_value(state, alpha, beta, depth):
+            scored = sorted(actions,
+                            key=lambda a: cache[a].evaluate(ai_sym, hu_sym),
+                            reverse=maximizing)
+            return scored[:MAX_CANDIDATES]
+
+        # ── alpha-beta ────────────────────────────────────────────────────────
+        def max_value(s, alpha, beta, depth):
+            if stop_event.is_set():
+                return None
+            key = state_key(s, depth)
+            if key in tt:
+                return tt[key]
+            if s.is_terminal() or depth == self.depth_limit:
+                score = s.evaluate(ai_sym, hu_sym)
+                tt[key] = score
+                return score
+
+            value = -math.inf
+            for a in order_actions(s.get_actions(), s, True):
                 if stop_event.is_set():
                     return None
-
-                key = (hash_state(state), depth)
-                if key in transposition_table:
-                    return transposition_table[key]
-
-                if state.is_terminal() or depth == depth_limit:
-                    score = state.evaluate(ai_symbol, human_symbol)
-                    transposition_table[key] = score
-                    return score
-
-                value = -math.inf
-                actions = order_actions(state.get_actions(), state, True, ai_symbol, human_symbol)
-                for action in actions:
-                    if stop_event.is_set():
-                        return None
-                    new_state = state.result(action)
-                    score = min_value(new_state, alpha, beta, depth + 1)
-                    if score is None:
-                        return None
-                    value = max(value, score)
-                    if value >= beta:
-                        break
-                    alpha = max(alpha, value)
-
-                transposition_table[key] = value
-                return value
-
-            def min_value(state, alpha, beta, depth):
-                if stop_event.is_set():
-                    return None
-
-                key = (hash_state(state), depth)
-                if key in transposition_table:
-                    return transposition_table[key]
-
-                if state.is_terminal() or depth == depth_limit:
-                    score = state.evaluate(ai_symbol, human_symbol)
-                    transposition_table[key] = score
-                    return score
-
-                value = math.inf
-                actions = order_actions(state.get_actions(), state, False, ai_symbol, human_symbol)
-                for action in actions:
-                    if stop_event.is_set():
-                        return None
-                    new_state = state.result(action)
-                    score = max_value(new_state, alpha, beta, depth + 1)
-                    if score is None:
-                        return None
-                    value = min(value, score)
-                    if value <= alpha:
-                        break
-                    beta = min(beta, value)
-
-                transposition_table[key] = value
-                return value
-
-            best_score = -math.inf
-            best_action = None
-            actions = order_actions(state.get_actions(), state, True, ai_symbol, human_symbol)
-            for action in actions:
-                if stop_event.is_set():
-                    return None
-                new_state = state.result(action)
-                score = min_value(new_state, -math.inf, math.inf, 1)
+                score = min_value(s.result(a), alpha, beta, depth + 1)
                 if score is None:
                     return None
-                if score > best_score:
-                    best_score = score
-                    best_action = action
+                value = max(value, score)
+                if value >= beta:
+                    break
+                alpha = max(alpha, value)
 
-            return best_action
+            tt[key] = value
+            return value
 
-        return alpha_beta(state, self.depth_limit, self.problem.ai_symbol, self.problem.human_symbol)
+        def min_value(s, alpha, beta, depth):
+            if stop_event.is_set():
+                return None
+            key = state_key(s, depth)
+            if key in tt:
+                return tt[key]
+            if s.is_terminal() or depth == self.depth_limit:
+                score = s.evaluate(ai_sym, hu_sym)
+                tt[key] = score
+                return score
 
-"""
-Use a clipboard (transposition_table) to avoid recalculating the approved state.
+            value = math.inf
+            for a in order_actions(s.get_actions(), s, False):
+                if stop_event.is_set():
+                    return None
+                score = max_value(s.result(a), alpha, beta, depth + 1)
+                if score is None:
+                    return None
+                value = min(value, score)
+                if value <= alpha:
+                    break
+                beta = min(beta, value)
 
-There are order_actions priorities for winning and blocking.
+            tt[key] = value
+            return value
 
-Standard alpha-beta trimming.
+        # ── root search ───────────────────────────────────────────────────────
+        best_score  = -math.inf
+        best_action = None
 
-Calculate the evaluation score at the leaf nodes (terminals or reach depth_limit).
-"""
+        for action in order_actions(state.get_actions(), state, True):
+            if stop_event.is_set():
+                return None
+            score = min_value(state.result(action), -math.inf, math.inf, 1)
+            if score is None:
+                return None
+            if score > best_score:
+                best_score  = score
+                best_action = action
+
+        return best_action
+
+
+# ── backwards-compatible alias ────────────────────────────────────────────────
+class AIPlayer:
+    """Thin wrapper kept for legacy callers."""
+    def __init__(self, problem, depth_limit: int = 3):
+        self._strategy = AlphaBetaSearch(problem, depth_limit)
+
+    def get_move(self, state, stop_event):
+        return self._strategy.get_move(state, stop_event)
